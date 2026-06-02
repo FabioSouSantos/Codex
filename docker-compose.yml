@@ -1,0 +1,58 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: codex-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-lexbase}
+      POSTGRES_USER: ${DB_USER:-lexbase}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD no .env}
+    volumes:
+      - ${APPDATA_PATH:-./appdata}/lexbase/postgres:/var/lib/postgresql/data
+    networks:
+      - lexbase-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-lexbase} -d ${DB_NAME:-lexbase}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: codex-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-lexbase}
+      DB_USER: ${DB_USER:-lexbase}
+      DB_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD no .env}
+      SECRET_KEY: ${SECRET_KEY:?defina SECRET_KEY no .env}
+      TOKEN_EXPIRE: ${TOKEN_EXPIRE:-480}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@codex.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?defina ADMIN_PASSWORD no .env}
+      ADMIN_NOME: ${ADMIN_NOME:-Administrador}
+      TIMEZONE: ${TIMEZONE:-America/Porto_Velho}
+    # Sem porta externa — acessível apenas via rede interna lexbase-net
+    expose:
+      - "8000"
+    networks:
+      - lexbase-net
+
+  frontend:
+    build: ./frontend
+    container_name: codex-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${APP_PORT:-4200}:80"
+    networks:
+      - lexbase-net
+
+networks:
+  lexbase-net:
+    driver: bridge
